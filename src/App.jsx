@@ -14,7 +14,7 @@ function App() {
   const [playbackSpeed, setPlaybackSpeed] = useState(1);
   const [zipFiles, setZipFiles] = useState([]);
 
-  // --- TOGGLE STATE (DEFAULT HIDE TOOLS) ---
+  // --- ADDED: TOGGLE STATE (SET TO FALSE BY DEFAULT) ---
   const [isMenuOpen, setIsMenuOpen] = useState(false);
 
   // IMAGE EDITING STATES
@@ -89,6 +89,7 @@ function App() {
     const fileType = file.type;
     const extension = file.name.split('.').pop().toLowerCase();
 
+    // Reset states
     setType("");
     setContent("");
     setUrl("");
@@ -106,28 +107,34 @@ function App() {
       audioCtxRef.current = null;
     }
 
+    // 1. IMAGES
     if (fileType.startsWith("image") || extension === "svg") {
       setType("image");
       setUrl(URL.createObjectURL(file));
     }
+    // 2. VIDEO
     else if (fileType.startsWith("video")) {
       setType("video");
       setUrl(URL.createObjectURL(file));
     }
+    // 3. AUDIO
     else if (fileType.startsWith("audio")) {
       setType("audio");
       setUrl(URL.createObjectURL(file));
     }
+    // 4. PDF
     else if (fileType === "application/pdf" || extension === "pdf") {
       setType("pdf");
       setUrl(URL.createObjectURL(file));
     }
+    // 5. ZIP
     else if (extension === "zip") {
       const zip = await JSZip.loadAsync(file);
       const files = Object.keys(zip.files).map(name => ({ name, dir: zip.files[name].dir }));
       setZipFiles(files);
       setType("archive");
     }
+    // 6. EXCEL/CSV
     else if (["xlsx", "xls", "csv"].includes(extension)) {
       const reader = new FileReader();
       reader.onload = (e) => {
@@ -138,21 +145,25 @@ function App() {
       };
       reader.readAsArrayBuffer(file);
     }
+    // 7. 3D MODELS
     else if (["stl", "obj", "glb", "gltf"].includes(extension)) {
       setType("3d");
       setContent(`3D Model Rendering Engine Initializing for: ${extension}`);
     }
+    // 8. DATABASE
     else if (["sql", "sqlite", "db", "json"].includes(extension)) {
       const text = await file.text();
       setType("code");
       setContent(text);
       setLanguage(extension === "json" ? "json" : "sql");
     }
+    // 9. WORD
     else if (extension === "docx") {
       const result = await mammoth.extractRawText({ arrayBuffer: await file.arrayBuffer() });
       setType("text");
       setContent(result.value);
     }
+    // 10. CODE / TEXT
     else if (fileType.startsWith("text/") || ["js", "py", "java", "c", "cpp", "html", "css", "md", "xml", "php", "rb", "go", "rs", "swift"].includes(extension)) {
       const text = await file.text();
       setType("code");
@@ -160,6 +171,7 @@ function App() {
       const langMap = { py: 'python', java: 'java', html: 'html', css: 'css', md: 'markdown', rs: 'rust' };
       setLanguage(langMap[extension] || "javascript");
     }
+    // 11. FALLBACK
     else {
       const buffer = await file.arrayBuffer();
       const view = new Uint8Array(buffer.slice(0, 5000));
@@ -224,15 +236,10 @@ function App() {
   };
 
   const QuickUpload = ({ label, accept, color }) => (
-    <label style={{ 
-      background: color, color: "white", padding: "6px 10px", borderRadius: "4px", 
-      cursor: "pointer", fontSize: "0.75rem", fontWeight: "600", border: "none",
-      width: "100%", textAlign: "left", boxSizing: "border-box", display: "block", 
-      marginBottom: "4px", opacity: 0.9, transition: "opacity 0.2s"
-    }}
-    onMouseEnter={(e) => e.currentTarget.style.opacity = "1"}
-    onMouseLeave={(e) => e.currentTarget.style.opacity = "0.9"}
-    >
+    <label style={{
+      background: color, color: "white", padding: "8px 15px", borderRadius: "6px",
+      cursor: "pointer", fontSize: "0.85rem", fontWeight: "bold", border: "1px solid rgba(255,255,255,0.1)"
+    }}>
       {label}
       <input type="file" accept={accept} hidden onChange={(e) => {
         if (e.target.files[0]) openFile(e.target.files[0]);
@@ -242,184 +249,135 @@ function App() {
   );
 
   return (
-    <div style={{ 
-      background: "radial-gradient(circle at top right, #0f172a, #020617)", 
-      height: "100vh", width: "100vw", color: "#f8fafc", fontFamily: "sans-serif", display: "flex", overflow: "hidden" 
-    }}>
-      
-      {/* GLOW ANIMATIONS */}
-      <style>{`
-        @keyframes neon-glow {
-          0% { border-color: #1e293b; box-shadow: 0 0 5px rgba(56,189,248,0.2); }
-          50% { border-color: #38bdf8; box-shadow: 0 0 20px rgba(56,189,248,0.5); }
-          100% { border-color: #1e293b; box-shadow: 0 0 5px rgba(56,189,248,0.2); }
-        }
-        .glow-effect { animation: neon-glow 4s infinite ease-in-out; }
-      `}</style>
+    <div style={{ background: "#020617", minHeight: "100vh", width: "100vw", color: "#f8fafc", fontFamily: "sans-serif", display: "flex", flexDirection: "column", overflowX: "hidden" }}>
+      <header style={{ width: "100%", background: "#1e293b", padding: "20px 0", textAlign: "center", borderBottom: "1px solid #475569" }}>
+        <h1 style={{ margin: "0 0 10px 0", fontSize: "2.5rem", fontWeight: "800" }}>UniView Studio Pro</h1>
 
-      {/* --- SIDEBAR FIXED --- */}
-      <aside style={{ 
-        width: isMenuOpen ? "160px" : "50px", 
-        flexShrink: 0,
-        background: "rgba(15, 23, 42, 0.9)", 
-        borderRight: "2px solid #38bdf8", 
-        display: "flex", 
-        flexDirection: "column", 
-        transition: "width 0.2s ease-in-out",
-        padding: "10px 6px",
-        overflowX: "hidden",
-        boxShadow: "5px 0 15px rgba(0,0,0,0.5)"
-      }}>
-        <button 
+        {/* --- TOGGLE BUTTON --- */}
+        <button
           onClick={() => setIsMenuOpen(!isMenuOpen)}
-          style={{ 
-            background: "#1e293b", color: "#38bdf8", border: "1px solid #38bdf8", 
-            padding: "8px", borderRadius: "4px", cursor: "pointer", 
-            marginBottom: "15px", fontSize: "0.9rem", display: "flex", justifyContent: "center",
-            boxShadow: "0 0 10px rgba(56,189,248,0.3)"
-          }}
+          style={{ marginBottom: "15px", background: "#475569", color: "white", border: "none", padding: "5px 15px", borderRadius: "4px", cursor: "pointer", fontSize: "0.8rem" }}
         >
-          {isMenuOpen ? "✕" : "☰"}
+          {isMenuOpen ? "Hide Tools ▲" : "Show Tools ▼"}
         </button>
 
+        <div style={{ marginBottom: "15px" }}>
+          <label style={{ background: "#2563eb", color: "white", padding: "12px 40px", borderRadius: "8px", cursor: "pointer", fontWeight: "600", fontSize: "1.1rem", display: "inline-block" }}>
+            📁 Upload Any File
+            <input type="file" hidden onChange={(e) => {
+              if (e.target.files[0]) openFile(e.target.files[0]);
+              e.target.value = null;
+            }} />
+          </label>
+        </div>
+
+        {/* --- CONDITIONAL RENDERING WRAPPER --- */}
         {isMenuOpen && (
-          <div style={{ display: "flex", flexDirection: "column" }}>
-            <p style={{ fontSize: "0.6rem", color: "#38bdf8", fontWeight: "bold", textTransform: "uppercase", marginBottom: "8px", paddingLeft: "4px" }}>Modules</p>
-            <QuickUpload label="🖼️ Image" accept="image/*,.svg" color="#be185d" />
-            <QuickUpload label="🎬 Video" accept="video/*" color="#6d28d9" />
-            <QuickUpload label="🎵 Audio" accept="audio/*" color="#047857" />
-            <QuickUpload label="📑 PDF" accept=".pdf" color="#b91c1c" />
-            <QuickUpload label="📊 Excel" accept=".xlsx,.xls,.csv" color="#15803d" />
-            <QuickUpload label="📝 Word" accept=".docx" color="#1d4ed8" />
-            <QuickUpload label="🧱 3D" accept=".stl,.obj,.glb" color="#c2410c" />
-            <QuickUpload label="🗄️ Database" accept=".sql,.db,.sqlite" color="#0e7490" />
-            <QuickUpload label="📦 ZIP" accept=".zip" color="#713f12" />
-            <QuickUpload label="💻 Code" accept=".js,.py,.html,.css,.json,.rs,.go" color="#374151" />
-            <div style={{ margin: "10px 0", borderTop: "1px solid #1e293b" }} />
-            <label style={{ background: "#2563eb", color: "white", padding: "6px 10px", borderRadius: "4px", cursor: "pointer", fontWeight: "600", textAlign: "center", fontSize: "0.75rem" }}>
-              📁 All Files
-              <input type="file" hidden onChange={(e) => {
-                if (e.target.files[0]) openFile(e.target.files[0]);
-                e.target.value = null;
-              }} />
-            </label>
+          <div style={{ display: "flex", justifyContent: "center", gap: "10px", flexWrap: "wrap", padding: "0 20px" }}>
+            <QuickUpload label="🖼️ Image" accept="image/*,.svg" color="#db2777" />
+            <QuickUpload label="🎬 Video" accept="video/*" color="#7c3aed" />
+            <QuickUpload label="🎵 Audio" accept="audio/*" color="#059669" />
+            <QuickUpload label="📑 PDF" accept=".pdf" color="#dc2626" />
+            <QuickUpload label="📊 Excel/CSV" accept=".xlsx,.xls,.csv" color="#16a34a" />
+            <QuickUpload label="📝 Word" accept=".docx" color="#2563eb" />
+            <QuickUpload label="🧱 3D Model" accept=".stl,.obj,.glb" color="#ea580c" />
+            <QuickUpload label="🗄️ Database" accept=".sql,.db,.sqlite" color="#0891b2" />
+            <QuickUpload label="📦 ZIP" accept=".zip" color="#854d0e" />
+            <QuickUpload label="💻 Code" accept=".js,.py,.html,.css,.json,.rs,.go" color="#4b5563" />
           </div>
         )}
-      </aside>
+      </header>
 
-      {/* --- MAIN CONTENT AREA FIXED --- */}
-      <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", minWidth: 0 }}>
-        {/* GLOWING HEADER */}
-        <header style={{ 
-          background: "linear-gradient(to right, #1e293b, #0f172a)", 
-          padding: "10px 20px", 
-          borderBottom: "2px solid #38bdf8", 
-          display: "flex", 
-          alignItems: "center", 
-          justifyContent: "space-between",
-          boxShadow: "0 0 20px rgba(56, 189, 248, 0.4)"
-        }}>
-          <h1 style={{ 
-            margin: 0, 
-            fontSize: "1.4rem", 
-            fontWeight: "900", 
-            fontFamily: "Orbitron, sans-serif",
-            letterSpacing: "3px",
-            textTransform: "uppercase",
-            background: "linear-gradient(90deg, #38bdf8, #818cf8, #38bdf8)",
-            backgroundSize: "200% auto",
-            WebkitBackgroundClip: "text",
-            WebkitTextFillColor: "transparent",
-            filter: "drop-shadow(0 0 8px rgba(56, 189, 248, 0.8))"
-          }}>
-            Universal View X Pro
-          </h1>
-          {fileName && <span style={{ fontSize: "0.75rem", color: "#38bdf8", border: "1px solid #38bdf8", padding: "2px 8px", borderRadius: "10px" }}>{fileName}</span>}
-        </header>
-
-        <main style={{ 
-          display: "flex", flexDirection: "column", alignItems: "center", padding: "15px", flex: 1, overflow: "hidden",
-          background: "url('https://www.transparenttextures.com/patterns/dark-matter.png')" 
-        }}>
-          {type ? (
-            <div className="glow-effect" style={{ 
-              width: "100%", height: "100%", display: "flex", flexDirection: "column", gap: "10px", overflow: "hidden",
-              border: "2px solid #1e293b", borderRadius: "12px", background: "rgba(15, 23, 42, 0.7)", padding: "10px"
-            }}>
-              <div style={{ background: "#000", borderRadius: "8px", flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", position: 'relative' }}>
-                <div style={{ flex: 1, display: "flex", justifyContent: "center", alignItems: "center", position: 'relative', overflow: 'hidden' }}>
-                  {type === "image" && (
-                    <img id="studio-img" ref={imageDisplayRef} src={url} alt="preview" style={{ maxWidth: "100%", maxHeight: "100%", objectFit: "contain", filter: imageFilterStyle }} />
-                  )}
-                  {type === "video" && <video ref={mediaRef} controls style={{ maxWidth: "100%", maxHeight: "100%" }} src={url} />}
-                  {type === "audio" && (
-                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '15px' }}>
-                      <canvas ref={canvasRef} width="500" height="150" style={{ background: '#0f172a', borderRadius: '8px', border: "1px solid #38bdf8" }} />
-                      <audio ref={mediaRef} controls src={url} onPlay={handleAudioPlay} />
-                    </div>
-                  )}
-                  {type === "pdf" && <iframe src={url} width="100%" height="100%" title="pdf" style={{ border: "none" }} />}
-                  {type === "text" && <pre style={{ width: "100%", height: "100%", padding: "20px", color: "#38bdf8", overflow: "auto", whiteSpace: "pre-wrap", fontSize: "0.85rem", margin: 0 }}>{content}</pre>}
-                  {type === "code" && (
-                    <div style={{ display: 'flex', width: '100%', height: '100%' }}>
-                      <Editor height="100%" width="50%" language={language} value={content} theme="vs-dark" onChange={setContent} options={{ fontSize: 14 }} />
-                      <div style={{ width: "50%", background: "#fff", display: "flex", flexDirection: "column" }}>
-                        <div style={{ background: "#0f172a", color: "#38bdf8", padding: "4px", fontSize: "10px", textAlign: "center", fontWeight: "bold" }}>LIVE BROWSER PREVIEW</div>
-                        <iframe id="preview" style={{ flex: 1, border: "none" }} />
-                      </div>
-                    </div>
-                  )}
-                  {type === "archive" && (
-                    <div style={{ width: '100%', padding: '20px', overflow: 'auto' }}>
-                      <ul style={{ color: '#38bdf8', listStyle: 'none', padding: 0, fontSize: "0.9rem" }}>
-                        {zipFiles.map((f, i) => <li key={i} style={{ marginBottom: '4px' }}>{f.dir ? "📁" : "📄"} {f.name}</li>)}
-                      </ul>
-                    </div>
-                  )}
-                </div>
+      <main style={{ width: "100%", display: "flex", flexDirection: "column", alignItems: "center", padding: "20px 0", flex: 1 }}>
+        {type ? (
+          <div style={{ width: "96%", display: "flex", flexDirection: "column", gap: "25px" }}>
+            <div style={{ background: "#0f172a", borderRadius: "16px", border: "1px solid #334155", height: "70vh", width: "100%", display: "flex", flexDirection: "column", overflow: "hidden", position: 'relative' }}>
+              <div style={{ background: "#1e293b", padding: "10px 25px", fontSize: "14px", display: 'flex', justifyContent: 'space-between', borderBottom: "1px solid #334155" }}>
+                <span>FILE: {fileName}</span>
+                <span style={{ color: "#38bdf8" }}>{type.toUpperCase()} MODE</span>
               </div>
 
-              <div style={{ background: "rgba(30, 41, 59, 0.9)", padding: "10px 15px", borderRadius: "8px", border: "1px solid #38bdf8" }}>
+              <div style={{ flex: 1, display: "flex", justifyContent: "center", alignItems: "center", background: "#000", position: 'relative', overflow: 'hidden' }}>
                 {type === "image" && (
-                  <div style={{ display: "flex", gap: "20px", alignItems: "center", justifyContent: "center", flexWrap: "wrap" }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <label style={{ fontSize: '11px', color: "#38bdf8" }}>Brightness</label>
-                      <input type="range" min="0" max="200" value={brightness} onChange={(e) => setBrightness(e.target.value)} />
-                    </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <label style={{ fontSize: '11px', color: "#38bdf8" }}>Contrast</label>
-                      <input type="range" min="0" max="200" value={contrast} onChange={(e) => setContrast(e.target.value)} />
-                    </div>
-                    <button onClick={downloadImage} style={{ background: "#10b981", color: "white", padding: "6px 15px", border: "none", borderRadius: "4px", fontSize: "0.8rem", fontWeight: "bold", cursor: 'pointer' }}>Save Image</button>
+                  <div style={{ position: 'relative' }}>
+                    <img id="studio-img" ref={imageDisplayRef} src={url} alt="preview" style={{ maxWidth: "100%", maxHeight: "70vh", objectFit: "contain", filter: imageFilterStyle }} />
+                    {isCropping && (
+                      <div style={{
+                        position: 'absolute', border: '2px dashed #38bdf8', boxShadow: '0 0 0 9999px rgba(0,0,0,0.5)',
+                        left: `${cropData.x}${cropUnit}`, top: `${cropData.y}${cropUnit}`,
+                        width: `${cropData.width}${cropUnit}`, height: `${cropData.height}${cropUnit}`
+                      }} />
+                    )}
                   </div>
                 )}
-                {type === "code" && (
-                  <button onClick={runCode} style={{ background: "linear-gradient(to right, #10b981, #059669)", color: "white", padding: "8px 30px", border: "none", borderRadius: "4px", fontSize: "0.85rem", fontWeight: "bold", cursor: 'pointer', boxShadow: "0 0 10px rgba(16, 185, 129, 0.5)" }}>
-                    ▶ EXECUTE & RENDER
-                  </button>
+                {type === "video" && <video ref={mediaRef} controls style={{ maxWidth: "100%", maxHeight: "100%" }} src={url} />}
+                {type === "audio" && (
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '20px' }}>
+                    <canvas ref={canvasRef} width="600" height="200" style={{ background: '#0f172a', borderRadius: '12px' }} />
+                    <audio ref={mediaRef} controls src={url} onPlay={handleAudioPlay} />
+                  </div>
+                )}
+                {type === "pdf" && <iframe src={url} width="100%" height="100%" title="pdf" />}
+                {type === "text" && <pre style={{ width: "100%", height: "100%", padding: "25px", color: "#94a3b8", overflow: "auto", whiteSpace: "pre-wrap" }}>{content}</pre>}
+                {type === "code" && <Editor height="100%" language={language} value={content} theme="vs-dark" onChange={setContent} options={{ fontSize: 18 }} />}
+                {type === "archive" && (
+                  <div style={{ width: '100%', padding: '40px', overflow: 'auto' }}>
+                    <h3>Contents of {fileName}:</h3>
+                    <ul style={{ color: '#38bdf8', listStyle: 'none' }}>
+                      {zipFiles.map((f, i) => <li key={i} style={{ marginBottom: '5px' }}>{f.dir ? "📁" : "📄"} {f.name}</li>)}
+                    </ul>
+                  </div>
+                )}
+                {type === "3d" && <div style={{ textAlign: 'center' }}><h3>3D Model Detected</h3><p>{content}</p><div style={{ fontSize: '50px' }}>🧊</div></div>}
+                {type === "unknown" && (
+                  <div style={{ textAlign: 'center', color: '#94a3b8', padding: '20px' }}>
+                    <p style={{ color: '#ef4444' }}>⚠️ Unknown binary file. Hex dump:</p>
+                    <pre style={{ textAlign: 'left', background: '#1e293b', padding: '20px', borderRadius: '10px', fontSize: '12px', overflow: 'auto', maxHeight: '50vh' }}>{content}</pre>
+                  </div>
                 )}
               </div>
             </div>
-          ) : (
-            <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", textAlign: 'center' }}>
-              <div style={{ padding: "40px", border: "2px dashed #38bdf8", borderRadius: "20px", background: "rgba(56, 189, 248, 0.05)" }}>
-                <h2 style={{ fontSize: "1.5rem", color: "#38bdf8", textShadow: "0 0 10px rgba(56, 189, 248, 0.5)" }}>UNIVERSAL VIEW X PRO</h2>
-                <p style={{ fontSize: "0.85rem", color: "#94a3b8" }}>System ready. Please select a module from the terminal sidebar.</p>
-              </div>
-            </div>
-          )}
-        </main>
 
-        {/* TERMINAL OUTPUT */}
-        {output && (
-          <div style={{ height: "120px", background: "#020617", borderTop: "2px solid #38bdf8", padding: "10px", display: "flex", flexDirection: "column" }}>
-              <div style={{ color: "#38bdf8", fontSize: "0.7rem", fontWeight: "bold", marginBottom: "5px" }}>CONSOLE_LOG_STREAM:</div>
-              <div style={{ flex: 1, overflowY: "auto", fontFamily: "monospace", fontSize: "0.8rem", color: "#10b981" }}>
-                  {"> "}{output}
+            <div style={{ background: "#1e293b", padding: "25px", borderRadius: "16px", border: "1px solid #334155" }}>
+              {type === "image" && (
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: "25px" }}>
+                  <div>
+                    <label style={{ display: 'block', marginBottom: '8px' }}>Brightness</label>
+                    <input type="range" min="0" max="200" value={brightness} onChange={(e) => setBrightness(e.target.value)} style={{ width: '100%' }} />
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', marginBottom: '8px' }}>Contrast</label>
+                    <input type="range" min="0" max="200" value={contrast} onChange={(e) => setContrast(e.target.value)} style={{ width: '100%' }} />
+                  </div>
+                  <button onClick={downloadImage} style={{ background: "#10b981", color: "white", padding: "12px", border: "none", borderRadius: "8px", fontWeight: "bold", cursor: 'pointer' }}>
+                    Download
+                  </button>
+                </div>
+              )}
+              {type === "code" && (
+                <button onClick={runCode} style={{ background: "#10b981", color: "white", padding: "12px 50px", border: "none", borderRadius: "8px", fontWeight: "bold", cursor: 'pointer' }}>
+                  ▶ RUN EXECUTION
+                </button>
+              )}
+            </div>
+
+            {type === "code" && (
+              <div style={{ background: "#000", borderRadius: "16px", padding: "20px", border: "1px solid #334155" }}>
+                <p style={{ color: "#64748b", fontSize: "12px", margin: "0 0 10px 0" }}>CONSOLE / PREVIEW</p>
+                <pre style={{ color: "#10b981", margin: "0 0 15px 0" }}>{output || "> Ready..."}</pre>
+                <iframe id="preview" title="Code Preview" style={{ width: "100%", height: "50vh", background: 'white', border: 'none', borderRadius: '8px' }} />
               </div>
+            )}
+          </div>
+        ) : (
+          <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", color: "#475569", textAlign: 'center' }}>
+            <div>
+              <h2 style={{ fontSize: "2rem", marginBottom: '10px' }}>No File Selected</h2>
+              <p>Upload any file to analyze and view its contents.</p>
+            </div>
           </div>
         )}
-      </div>
+      </main>
     </div>
   );
 }

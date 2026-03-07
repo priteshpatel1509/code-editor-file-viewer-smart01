@@ -4,8 +4,8 @@ import mammoth from "mammoth";
 import Editor from "@monaco-editor/react";
 import JSZip from "jszip";
 // ADDED: Cropper Imports
-//import ReactCrop, { centerCrop, makeAspectCrop } from 'react-image-crop';
-//import 'react-image-crop/dist/ReactCrop.css';
+import ReactCrop, { centerCrop, makeAspectCrop } from 'react-image-crop';
+import 'react-image-crop/dist/ReactCrop.css';
 
 function App() {
   const [type, setType] = useState("");
@@ -29,6 +29,12 @@ function App() {
   const [cropUnit, setCropUnit] = useState("px");
   const [cropData, setCropData] = useState({ x: 0, y: 0, width: 200, height: 200 });
   const [exportFormat, setExportFormat] = useState("image/png");
+  
+  // ADDED: IMAGE LIBRARY STATE
+  const [imageLibrary, setImageLibrary] = useState([]);
+
+  // PDF ZOOM STATE
+  const [pdfZoom, setPdfZoom] = useState(100);
 
   // ADDED: New States for Cropper Tool
   const [crop, setCrop] = useState();
@@ -116,9 +122,33 @@ function App() {
     setExpandedFolders(prev => ({ ...prev, [folder]: !prev[folder] }));
   };
 
+  // --- ADDED: BATCH IMAGE UPLOAD HANDLER ---
+  const handleBatchImageUpload = (e) => {
+    const files = Array.from(e.target.files);
+    if (files.length === 0) return;
+
+    const newImages = files
+      .filter(file => file.type.startsWith("image"))
+      .map(file => ({
+        name: file.name,
+        url: URL.createObjectURL(file),
+        id: Math.random().toString(36).substr(2, 9) + Date.now()
+      }));
+
+    if (newImages.length > 0) {
+      setImageLibrary(prev => [...prev, ...newImages]);
+      setType("image");
+      if (!url) {
+        setUrl(newImages[0].url);
+        setFileName(newImages[0].name);
+      }
+    }
+    setHistory(prev => [{ name: `Batch: ${newImages.length} images`, time: new Date().toLocaleTimeString(), type: 'image/batch' }, ...prev]);
+  };
+
   // --- IMPROVED: BATCH UPLOAD FOR "ALL SONGS" DISPLAY ---
   const handleBatchUpload = async (e) => {
-    const files = Array.from(e.target.files);
+    const files = Array.from(e.target.files || e.dataTransfer.files);
     if (files.length === 0) return;
 
     setHistory(prev => [{ name: `Batch: ${files.length} files`, time: new Date().toLocaleTimeString(), type: 'audio/batch' }, ...prev]);
@@ -142,7 +172,7 @@ function App() {
       });
       
       setType("audio");
-      if (!url) {
+      if (!url && newSongs[0]) {
         setFileName(newSongs[0].name);
         setUrl(newSongs[0].url);
       }
@@ -211,7 +241,6 @@ function App() {
   const openFile = async (file) => {
     if (!file) return;
 
-    // Track Stats and History
     setFileStats({
         size: (file.size / 1024).toFixed(2) + " KB",
         modified: new Date(file.lastModified).toLocaleDateString()
@@ -232,6 +261,7 @@ function App() {
     setHue(0);
     setIsCropping(false);
     setPlaybackSpeed(1);
+    setPdfZoom(100);
 
     if (audioCtxRef.current) {
       audioCtxRef.current.close();
@@ -240,7 +270,9 @@ function App() {
 
     if (fileType.startsWith("image") || extension === "svg") {
       setType("image");
-      setUrl(URL.createObjectURL(file));
+      const blobUrl = URL.createObjectURL(file);
+      setUrl(blobUrl);
+      setImageLibrary(prev => prev.find(i => i.name === file.name) ? prev : [...prev, { name: file.name, url: blobUrl, id: Date.now() }]);
     } else if (fileType.startsWith("video")) {
       setType("video");
       setUrl(URL.createObjectURL(file));
@@ -325,7 +357,6 @@ function App() {
 
   const imageFilterStyle = `brightness(${brightness}%) contrast(${contrast}%) grayscale(${grayscale}%) hue-rotate(${hue}deg)`;
 
-  // ADDED: Enhanced Download Logic for Converter and Cropper
   const downloadImage = () => {
     const img = imageDisplayRef.current;
     if (!img) return;
@@ -334,7 +365,6 @@ function App() {
     const ctx = canvas.getContext("2d");
 
     if (completedCrop?.width && completedCrop?.height) {
-      // Export CROPPED version
       const scaleX = img.naturalWidth / img.width;
       const scaleY = img.naturalHeight / img.height;
       canvas.width = completedCrop.width * scaleX;
@@ -349,7 +379,6 @@ function App() {
         0, 0, canvas.width, canvas.height
       );
     } else {
-      // Export FULL version
       canvas.width = img.naturalWidth;
       canvas.height = img.naturalHeight;
       ctx.filter = imageFilterStyle;
@@ -383,11 +412,12 @@ function App() {
     link.click();
   };
 
-  const QuickUpload = ({ label, accept, color, isAudio }) => (
+  const QuickUpload = ({ label, accept, color, isAudio, isImageBatch }) => (
     <label style={{ background: color, color: "white", padding: "8px 15px", borderRadius: "6px", cursor: "pointer", fontSize: "0.85rem", fontWeight: "bold", border: "1px solid rgba(255,255,255,0.1)" }}>
       {label}
-      <input type="file" accept={accept} multiple={isAudio} hidden onChange={(e) => {
+      <input type="file" accept={accept} multiple={isAudio || isImageBatch} hidden onChange={(e) => {
         if (isAudio) handleBatchUpload(e);
+        else if (isImageBatch) handleBatchImageUpload(e);
         else if (e.target.files[0]) openFile(e.target.files[0]);
         e.target.value = null;
       }} />
@@ -401,24 +431,25 @@ function App() {
       onDrop={handleDrop}
       style={{ background: "#020617", minHeight: "100vh", width: "100vw", color: "#f8fafc", fontFamily: "sans-serif", display: "flex", flexDirection: "column", overflowX: "hidden", position: "relative" }}
     >
-      {/* ADDED: DRAG OVERLAY */}
       {isDragging && (
         <div style={{ position: "absolute", inset: 0, zIndex: 999, background: "rgba(37, 99, 235, 0.2)", border: "4px dashed #2563eb", display: "flex", alignItems: "center", justifyContent: "center", pointerEvents: "none", backdropFilter: "blur(4px)" }}>
           <h2 style={{ color: "white", fontSize: "3rem", fontWeight: "bold" }}>Drop files to Open</h2>
         </div>
       )}
 
-      {/* ADDED: RESPONSIVE CSS INJECTION */}
       <style>{`
         @media (max-width: 768px) {
           h1 { font-size: 1.5rem !important; }
-          .main-content { flex-direction: column !important; }
+          .main-content { flex-direction: column !important; overflow-y: auto !important; }
           aside { width: 100% !important; border-right: none !important; border-bottom: 1px solid #1e293b !important; height: auto !important; max-height: 50vh !important; }
-          main { padding: 10px 0 !important; }
-          .audio-inner-container { width: 98% !important; }
+          main { padding: 10px 0 !important; width: 100% !important; }
+          .audio-inner-container { width: 98% !important; padding: 0 5px !important; }
           footer { height: auto !important; padding: 10px !important; flex-wrap: wrap !important; }
           footer div { flex: none !important; width: 100% !important; text-align: center !important; margin-bottom: 5px; }
           .folder-btn { padding: 12px !important; }
+          .code-controls { flex-direction: column !important; gap: 10px !important; }
+          .code-controls button { width: 100% !important; padding: 12px !important; }
+          .pdf-controls { width: 100% !important; flex-wrap: wrap; justify-content: center !important; gap: 10px !important; }
         }
         @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
       `}</style>
@@ -441,9 +472,9 @@ function App() {
         </div>
         {isMenuOpen && (
           <div style={{ display: "flex", justifyContent: "center", gap: "10px", flexWrap: "wrap", padding: "0 20px" }}>
-            <QuickUpload label="🖼️ Image" accept="image/*,.svg" color="#db2777" />
+            <QuickUpload label="🖼️ Batch Images" accept="image/*,.svg" color="#db2777" isImageBatch={true} />
             <QuickUpload label="🎬 Video" accept="video/*" color="#7c3aed" />
-            <QuickUpload label="🎵 Audio" accept="audio/*" color="#059669" isAudio={true} />
+            <QuickUpload label="🎵 Batch Audio" accept="audio/*" color="#059669" isAudio={true} />
             <QuickUpload label="📑 PDF" accept=".pdf" color="#dc2626" />
             <QuickUpload label="📊 Excel/CSV" accept=".xlsx,.xls,.csv" color="#16a34a" />
             <QuickUpload label="📝 Word" accept=".docx" color="#2563eb" />
@@ -457,7 +488,7 @@ function App() {
 
       <div className="main-content" style={{ display: "flex", flex: 1, overflow: "hidden" }}>
         {((type === "audio" || library.length > 0) || showHistory) && (
-          <aside style={{ width: "280px", background: "#000", borderRight: "1px solid #1e293b", padding: "20px", display: "flex", flexDirection: "column", gap: "20px", overflowY: "auto" }}>
+          <aside style={{ width: isMobile ? "100%" : "280px", background: "#000", borderRight: isMobile ? "none" : "1px solid #1e293b", padding: "20px", display: "flex", flexDirection: "column", gap: "20px", overflowY: "auto" }}>
             
             {showHistory ? (
                 <div style={{ animation: "fadeIn 0.3s" }}>
@@ -538,34 +569,34 @@ function App() {
                   </div>
                   <span style={{ color: "#38bdf8" }}>{type.toUpperCase()} MODE</span>
                 </div>
-                <div style={{ flex: 1, display: "flex", justifyContent: "center", alignItems: "center", background: "#000", position: 'relative', overflow: 'hidden', padding: "20px" }}>
+                <div style={{ flex: 1, display: "flex", justifyContent: "center", alignItems: "center", background: "#000", position: 'relative', overflow: 'hidden', padding: isMobile ? "10px" : "20px" }}>
                   {type === "audio" && (
                     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '20px', width: "100%", height: "100%" }}>
                       
-                      <div style={{ background: "#1e293b", padding: "15px", borderRadius: "12px", width: "90%", border: "1px dashed #38bdf8", textAlign: "center" }}>
+                      <div style={{ background: "#1e293b", padding: "15px", borderRadius: "12px", width: isMobile ? "100%" : "90%", border: "1px dashed #38bdf8", textAlign: "center" }}>
                         <p style={{ margin: "0 0 10px 0", color: "#94a3b8", fontSize: "0.8rem" }}>Import Audio Collection:</p>
-                        <label style={{ background: "#059669", color: "white", padding: "8px 20px", borderRadius: "6px", cursor: "pointer", fontSize: "0.9rem", fontWeight: "bold" }}>
+                        <label style={{ background: "#059669", color: "white", padding: "12px 20px", borderRadius: "6px", cursor: "pointer", fontSize: "0.9rem", fontWeight: "bold", display: "inline-block" }}>
                           🎵 Select All Songs
                           <input type="file" multiple accept="audio/*" hidden onChange={handleBatchUpload} />
                         </label>
-                        <p style={{ margin: "5px 0 0 0", color: "#475569", fontSize: "0.7rem" }}>Tip: You can also drag & drop files anywhere!</p>
+                        {!isMobile && <p style={{ margin: "5px 0 0 0", color: "#475569", fontSize: "0.7rem" }}>Tip: You can also drag & drop files anywhere!</p>}
                       </div>
 
                       <div style={{ width: "100%", flex: 1, display: "flex", justifyContent: "center", alignItems: "center", minHeight: "200px" }}>
                         <canvas ref={canvasRef} width="1000" height="300" style={{ background: '#0f172a', borderRadius: '12px', width: "90%", height: "100%", objectFit: "contain" }} />
                       </div>
-                      <div style={{ width: "90%", background: "#1e293b", borderRadius: "12px", padding: "20px", border: "1px solid #334155" }}>
+                      <div style={{ width: isMobile ? "100%" : "90%", background: "#1e293b", borderRadius: "12px", padding: isMobile ? "10px" : "20px", border: "1px solid #334155" }}>
                         <h3 style={{ margin: "0 0 15px 0", color: "#38bdf8" }}>{currentPlaylist} View</h3>
                         <div style={{ maxHeight: "250px", overflowY: "auto" }}>
                           {(currentPlaylist === "All Songs" ? library : playlists[currentPlaylist])
                             .filter(s => s.name.toLowerCase().includes(searchQuery.toLowerCase()))
                             .map((song, i) => (
                               <div key={i} style={{ display: "flex", justifyContent: "space-between", padding: "12px", borderBottom: "1px solid #334155", alignItems: "center", background: fileName === song.name ? "#0f172a" : "transparent", borderRadius: "8px", margin: "4px 0" }}>
-                                <div onClick={() => playSong(song)} style={{ cursor: "pointer", flex: 1, display: "flex", alignItems: "center", gap: "10px" }}>
+                                <div onClick={() => playSong(song)} style={{ cursor: "pointer", flex: 1, display: "flex", alignItems: "center", gap: "10px", overflow: "hidden" }}>
                                   <span style={{ color: fileName === song.name ? "#38bdf8" : "white" }}>{fileName === song.name ? "🔊" : "▶"}</span>
-                                  <span style={{ fontSize: isMobile ? "0.8rem" : "1rem" }}>{song.name}</span>
+                                  <span style={{ fontSize: isMobile ? "0.8rem" : "1rem", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{song.name}</span>
                                 </div>
-                                <div style={{ display: "flex", gap: "15px" }}>
+                                <div style={{ display: "flex", gap: isMobile ? "10px" : "15px" }}>
                                   <button 
                                     onClick={() => addToPlaylist(song, "My Favorites")} 
                                     style={{ 
@@ -585,10 +616,32 @@ function App() {
                     </div>
                   )}
 
-                  {/* MODIFIED: Integrated Image Tool with Converter & Cropper */}
                   {type === "image" && (
                     <div style={{ display: 'flex', flexDirection: 'column', width: '100%', alignItems: 'center' }}>
-                        {/* ToolBar */}
+                        {/* NEW: Batch Upload UI for Images */}
+                        <div style={{ background: "#1e293b", padding: "15px", borderRadius: "12px", width: isMobile ? "100%" : "90%", border: "1px dashed #db2777", textAlign: "center", marginBottom: "20px" }}>
+                          <p style={{ margin: "0 0 10px 0", color: "#94a3b8", fontSize: "0.8rem" }}>Batch Import Images:</p>
+                          <label style={{ background: "#db2777", color: "white", padding: "12px 20px", borderRadius: "6px", cursor: "pointer", fontSize: "0.9rem", fontWeight: "bold", display: "inline-block" }}>
+                            📸 Select All Images
+                            <input type="file" multiple accept="image/*" hidden onChange={handleBatchImageUpload} />
+                          </label>
+                        </div>
+
+                        {/* NEW: Image Selection Gallery */}
+                        {imageLibrary.length > 1 && (
+                          <div style={{ display: "flex", gap: "10px", overflowX: "auto", padding: "10px", background: "#0f172a", borderRadius: "12px", width: "90%", marginBottom: "20px", border: "1px solid #334155" }}>
+                            {imageLibrary.map((img) => (
+                              <img 
+                                key={img.id} 
+                                src={img.url} 
+                                onClick={() => { setUrl(img.url); setFileName(img.name); }}
+                                alt="thumb"
+                                style={{ height: "60px", borderRadius: "6px", cursor: "pointer", border: url === img.url ? "2px solid #db2777" : "2px solid transparent", transition: "0.2s" }} 
+                              />
+                            ))}
+                          </div>
+                        )}
+
                         <div style={{ background: '#1e293b', padding: '12px', borderRadius: '10px', marginBottom: '15px', display: 'flex', gap: '15px', flexWrap: 'wrap', alignItems: 'center', border: '1px solid #334155' }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                                 <label style={{ fontSize: '0.8rem', color: '#94a3b8' }}>Format:</label>
@@ -618,7 +671,6 @@ function App() {
                             </button>
                         </div>
 
-                        {/* Image Canvas / View */}
                         <div style={{ position: 'relative', width: '100%', display: 'flex', justifyContent: 'center' }}>
                             {isCropping ? (
                                 <ReactCrop
@@ -644,7 +696,6 @@ function App() {
                             )}
                         </div>
 
-                        {/* Existing Filter Controls (Sub-set displayed for space) */}
                         <div style={{ marginTop: '15px', display: 'flex', gap: '15px', flexWrap: 'wrap' }}>
                             <label style={{ fontSize: '0.75rem' }}>Brightness: <input type="range" min="0" max="200" value={brightness} onChange={(e) => setBrightness(e.target.value)} /></label>
                             <label style={{ fontSize: '0.75rem' }}>Contrast: <input type="range" min="0" max="200" value={contrast} onChange={(e) => setContrast(e.target.value)} /></label>
@@ -653,9 +704,64 @@ function App() {
                   )}
 
                   {type === "video" && <video ref={mediaRef} controls style={{ maxWidth: "100%", maxHeight: "100%" }} src={url} />}
-                  {type === "pdf" && <iframe src={url} width="100%" height="100%" title="pdf" />}
+                  
+                  {type === "pdf" && (
+                    <div style={{ width: "100%", height: "100%", display: "flex", flexDirection: "column" }}>
+                        <div className="pdf-controls" style={{ background: "#1e293b", padding: "10px", display: "flex", justifyContent: "center", gap: "20px", alignItems: "center", borderBottom: "1px solid #334155" }}>
+                            <button onClick={() => setPdfZoom(Math.max(50, pdfZoom - 10))} style={{ background: "#475569", color: "white", border: "none", padding: "8px 15px", borderRadius: "6px", cursor: "pointer", fontWeight: "bold" }}>➖ Zoom Out</button>
+                            <span style={{ fontSize: "0.9rem", color: "#38bdf8", fontWeight: "bold", minWidth: "60px", textAlign: "center" }}>{pdfZoom}%</span>
+                            <button onClick={() => setPdfZoom(Math.min(300, pdfZoom + 10))} style={{ background: "#475569", color: "white", border: "none", padding: "8px 15px", borderRadius: "6px", cursor: "pointer", fontWeight: "bold" }}>➕ Zoom In</button>
+                            <button onClick={() => setPdfZoom(100)} style={{ background: "#2563eb", color: "white", border: "none", padding: "8px 15px", borderRadius: "6px", cursor: "pointer", fontSize: "0.8rem" }}>Reset</button>
+                        </div>
+                        <div style={{ flex: 1, overflow: "auto", background: "#334155", display: "flex", justifyContent: "center", alignItems: "flex-start", padding: isMobile ? "0" : "20px" }}>
+                            <div style={{ width: `${pdfZoom}%`, height: "100%", transition: "width 0.2s ease-in-out" }}>
+                                <iframe 
+                                    src={`${url}#view=FitH`} 
+                                    width="100%" 
+                                    height="100%" 
+                                    title="pdf-viewer" 
+                                    style={{ border: "none", borderRadius: isMobile ? "0" : "8px", boxShadow: "0 10px 30px rgba(0,0,0,0.5)" }} 
+                                />
+                            </div>
+                        </div>
+                    </div>
+                  )}
+
                   {type === "text" && <pre style={{ width: "100%", height: "100%", padding: "25px", color: "#94a3b8", overflow: "auto", whiteSpace: "pre-wrap" }}>{content}</pre>}
-                  {type === "code" && <Editor height="100%" language={language} value={content} theme="vs-dark" onChange={setContent} options={{ fontSize: 18 }} />}
+                  
+                  {type === "code" && (
+                    <div style={{ display: "flex", flexDirection: "column", height: "100%", width: "100%", gap: "15px" }}>
+                      
+                      <div style={{ height: isMobile ? "300px" : "400px", width: "100%", border: "1px solid #334155", borderRadius: "8px", overflow: "hidden", background: "#1e1e1e" }}>
+                        <div style={{ background: "#2d2d2d", padding: "5px 15px", color: "#94a3b8", fontSize: "0.8rem", borderBottom: "1px solid #334155" }}>EDITOR: {fileName}</div>
+                        <Editor height="calc(100% - 30px)" language={language} value={content} theme="vs-dark" onChange={setContent} options={{ fontSize: isMobile ? 14 : 18 }} />
+                      </div>
+
+                      <div className="code-controls" style={{ display: "flex", justifyContent: "center", gap: "20px" }}>
+                        <button onClick={runCode} style={{ background: "#10b981", color: "white", border: "none", padding: "12px 60px", borderRadius: "8px", cursor: "pointer", fontWeight: "bold", fontSize: "1rem", boxShadow: "0 4px 14px 0 rgba(16, 185, 129, 0.39)" }}>
+                          ▶ Run Code
+                        </button>
+                        <button onClick={() => setOutput("")} style={{ background: "#475569", color: "white", border: "none", padding: "12px 30px", borderRadius: "8px", cursor: "pointer", fontWeight: "600" }}>
+                          Clear Console
+                        </button>
+                      </div>
+
+                      <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", gap: "15px", flex: 1, minHeight: isMobile ? "auto" : "350px" }}>
+                        
+                        <div style={{ flex: 1, height: isMobile ? "150px" : "auto", background: "#0f172a", border: "1px solid #334155", borderRadius: "8px", padding: "15px", overflowY: "auto", fontFamily: "'Fira Code', monospace", color: "#10b981" }}>
+                          <div style={{ fontWeight: "bold", marginBottom: "10px", color: "#64748b", fontSize: "0.7rem", textTransform: "uppercase", letterSpacing: "1px" }}>Output Console</div>
+                          <pre style={{ margin: 0, whiteSpace: "pre-wrap", fontSize: "0.9rem", lineHeight: "1.4" }}>{output || "$ waiting for execution..."}</pre>
+                        </div>
+
+                        <div style={{ flex: 1.2, height: isMobile ? "250px" : "auto", background: "white", border: "1px solid #334155", borderRadius: "8px", overflow: "hidden", display: "flex", flexDirection: "column" }}>
+                          <div style={{ background: "#e2e8f0", padding: "5px 12px", color: "#475569", fontSize: "0.7rem", fontWeight: "bold", borderBottom: "1px solid #cbd5e1" }}>LIVE BROWSER PREVIEW</div>
+                          <iframe id="preview" title="browser-preview" style={{ flex: 1, width: "100%", border: "none" }} />
+                        </div>
+
+                      </div>
+                    </div>
+                  )}
+
                   {type === "archive" && <div style={{ width: '100%', padding: '40px', overflow: 'auto' }}><h3>Contents:</h3><ul style={{ color: '#38bdf8', listStyle: 'none' }}>{zipFiles.map((f, i) => <li key={i}>{f.dir ? "📁" : "📄"} {f.name}</li>)}</ul></div>}
                 </div>
               </div>

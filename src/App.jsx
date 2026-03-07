@@ -5,7 +5,7 @@ import Editor from "@monaco-editor/react";
 import JSZip from "jszip";
 // ADDED: Cropper Imports
 //import ReactCrop, { centerCrop, makeAspectCrop } from 'react-image-crop';
-import 'react-image-crop/dist/ReactCrop.css';
+//import 'react-image-crop/dist/ReactCrop.css';
 
 function App() {
   const [type, setType] = useState("");

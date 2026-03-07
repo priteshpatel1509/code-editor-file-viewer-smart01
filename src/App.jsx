@@ -4,7 +4,7 @@ import mammoth from "mammoth";
 import Editor from "@monaco-editor/react";
 import JSZip from "jszip";
 // ADDED: Cropper Imports
-import ReactCrop, { centerCrop, makeAspectCrop } from 'react-image-crop';
+//import ReactCrop, { centerCrop, makeAspectCrop } from 'react-image-crop';
 import 'react-image-crop/dist/ReactCrop.css';
 
 function App() {
